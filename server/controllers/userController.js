@@ -152,3 +152,35 @@ export const paymentRazorpay = async (req, res) => {
         res.send({success: false, message: error.message})
     }
 }
+
+
+//api controller function to verfiy razorpay payment
+export const verifyRazorpay = async (req, res) => {
+    try {
+        const  {razorpay_order_id} = req.body;
+        
+        const orderInfo = await razorpayInstance.orders.fetch(razorpay_order_id)
+
+        if(orderInfo.status === 'paid') {
+            const transcationData = await transcationModel.findById(orderInfo.receipt)
+            if(transcationData.payment) {
+                return res.json({success: false, message: "Payment Failed"})
+            }
+            //adding credits in user data
+            const userData = await userModel.findOne({clerkId: transcationData.clerkId})
+            const creditBalance = userData.creditBalance + transcationData.credits
+            await userModel.findByIdAndUpdate(userData._id, {creditBalance})
+
+            //making the payment true
+            await transcationModel.findByIdAndUpdate(transcationData._id, {payment: true})
+
+            res.json({success: true, message: "Credits Added"})
+        } else {
+            return res.json({success: false, message: "Payment Failed"})
+        }
+
+    } catch (error) {
+        console.log(error)
+        res.json({success: false, message: error.message})
+    }
+}
