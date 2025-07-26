@@ -1,5 +1,7 @@
 import { Webhook } from "svix";
 import userModel from "../models/userModel.js";
+import razorpay from 'razorpay';
+import transcationModel from "../models/transcationModel.js";
 
 //api controller function to manage clerk user with database
 //hhtp:localhost:4000/api/user/webhooks
@@ -71,6 +73,79 @@ export const userCredits = async (req, res) => {
         const userData = await userModel.findOne({clerkId})
 
         res.json({success: true, credits: userData.creditBalance})
+
+    } catch (error) {
+        console.log(error);
+        res.send({success: false, message: error.message})
+    }
+}
+
+//gateway initialized
+export const razorpayInstance = new razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET
+});
+
+//api to make payment for credits
+export const paymentRazorpay = async (req, res) => {
+    try {
+        
+        const {clerkId, planId} = req.body
+        const userData = await userModel.findOne({clerkId})
+
+        if(!clerkId || !planId) {
+            return res.json({success: false, message: "Invalid credentials"})
+        }
+
+        let credits, plan, amount, date;
+
+        switch (planId) {
+            case 'Basic':
+                plan = 'Basic'
+                credits = 100
+                amount = 10
+                break;
+
+            case 'Advanced':
+                plan = 'Advanced'
+                credits = 500
+                amount = 50
+                break;
+                
+            case 'Business':
+                plan = 'Business'
+                credits = 5000
+                amount = 250
+                break;    
+        
+            default:
+                return res.json({success: false, message: "Plan not found"});
+        } 
+        date = Date.now()
+
+        //creating transcation
+        const transcationData = {
+            clerkId,
+            plan,
+            amount,
+            credits,
+            date
+        }
+        const newTranscation = await transcationModel.create(transcationData)
+
+        const options = {
+            amount: amount * 100,
+            currency: process.env.CURRENCY,
+            receipt: newTranscation._id
+        }
+
+        await razorpayInstance.orders.create(options, (error, order) => {
+            if(error) {
+                console.log(error);
+                return res.json({success: false, message: error})
+            }
+            res.json({success: true, order})
+        })
 
     } catch (error) {
         console.log(error);
